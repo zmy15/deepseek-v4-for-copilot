@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.1.1
+
+- Rename display name to `DeepSeek V4 for Copilot Chat` to avoid Marketplace name collision
+
 ## 0.1.0
 
 - Initial release
