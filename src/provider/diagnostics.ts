@@ -6,6 +6,8 @@ import { logger } from '../logger';
 import type { DeepSeekMessage, DeepSeekRequest, DeepSeekTool, DeepSeekUsage } from '../types';
 import { REPLAY_MARKER_MIME, parseFirstReplayMarker } from './replay';
 import type { ConversationSegment } from './segment';
+import { ACTIVATE_TOOL_PREFIX } from './tools/consts';
+import type { ActivatePreflightInspection } from './tools/preflight';
 import { IMAGE_DESCRIPTION_UNAVAILABLE } from './vision/consts';
 import type { VisionResolutionStats as VisionPipelineStats } from './vision/index';
 
@@ -223,6 +225,57 @@ export function createCacheDiagnosticsRecorder(): CacheDiagnosticsRecorder {
 	return new DefaultCacheDiagnosticsRecorder();
 }
 
+export function logToolFlowDiagnostics({
+	tools,
+	messagesFiltered,
+	preflight,
+	activatePreflight,
+	nextRound,
+	initialResponseNotice,
+}: {
+	tools: readonly vscode.LanguageModelChatTool[] | undefined;
+	messagesFiltered: boolean;
+	preflight: 'skipped' | 'handled' | 'ready' | 'round-limit';
+	activatePreflight?: ActivatePreflightInspection;
+	nextRound?: number;
+	initialResponseNotice?: boolean;
+}): void {
+	if (!getDebugLoggingEnabled()) {
+		return;
+	}
+
+	const activateToolCount =
+		tools?.reduce(
+			(count, tool) => count + (tool.name.startsWith(ACTIVATE_TOOL_PREFIX) ? 1 : 0),
+			0,
+		) ?? 0;
+	if (preflight === 'skipped' && !messagesFiltered && activateToolCount === 0) {
+		return;
+	}
+
+	let message =
+		`[tool-flow] preflight=${preflight}` +
+		` tools=${tools?.length ?? 0}` +
+		` activateTools=${activateToolCount}`;
+	if (messagesFiltered) {
+		message += ` messagesFiltered=true`;
+	}
+	if (activatePreflight) {
+		message +=
+			` preflightRounds=${activatePreflight.rounds}` +
+			` calledActivators=${activatePreflight.calledActivatorNames.length}` +
+			` remainingActivators=${activatePreflight.remainingActivatorNames.length}`;
+	}
+	if (nextRound !== undefined) {
+		message += ` nextRound=${nextRound}`;
+	}
+	if (initialResponseNotice) {
+		message += ` initialResponseNotice=true`;
+	}
+
+	logger.info(message);
+}
+
 interface VisionMessageStats {
 	inputImageParts: number;
 	inputImageMessages: number;
@@ -288,7 +341,6 @@ class DefaultCacheDiagnosticsRecorder implements CacheDiagnosticsRecorder {
 				` thinking=${options.isThinkingModel}` +
 				` thinkingEffort=${options.thinkingEffort}` +
 				` maxTokens=${options.maxTokens ?? 'api-default'}` +
-				` replayMarker=message-local` +
 				` inputMessages=${options.inputMessages.length}` +
 				` deepseekMessages=${options.request.messages.length}`,
 		);
@@ -298,10 +350,15 @@ class DefaultCacheDiagnosticsRecorder implements CacheDiagnosticsRecorder {
 		}
 		const vscodeMessageTrace = formatVscodeMessageTrace(options.inputMessages);
 		if (vscodeMessageTrace) {
-			logger.info(`[cache-trace #${requestId}] vscodeMsgs ${vscodeMessageTrace}`);
+			logger.debug(`[cache-trace #${requestId}] vscodeMsgs ${vscodeMessageTrace}`);
 		}
 		for (const detailLine of formatCacheTraceDetailLines(cacheTrace)) {
-			logger.info(`[cache-trace #${requestId}] ${detailLine}`);
+			const message = `[cache-trace #${requestId}] ${detailLine}`;
+			if (detailLine.startsWith('contentMarkers ')) {
+				logger.debug(message);
+			} else {
+				logger.info(message);
+			}
 		}
 		const visionTrace = formatVisionTrace(visionResolution, options.visionStats);
 		if (visionTrace) {

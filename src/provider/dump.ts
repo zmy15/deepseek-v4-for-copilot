@@ -907,15 +907,19 @@ function enqueueDumpWrite(label: string, write: () => Promise<void>): void {
 	});
 }
 
+function formatFileUri(fsPath: string): string {
+	return vscode.Uri.file(fsPath).toString();
+}
+
 function logProviderInputDump(
 	options: DumpProviderInputOptions,
 	paths: ProviderInputDumpPaths,
 	toolSummary: ToolSummary,
 ): void {
 	const systemPromptSummary = summarizeVscodeSystemPrompt(options.messages);
-	logger.info(
+	logger.debug(
 		`providerInputDump written: ${formatDumpSegment(options.segment)}` +
-			` input=${paths.providerInput} ` +
+			` input=${formatFileUri(paths.providerInput)} ` +
 			`(${options.messages.length} msgs, ${toolSummary.toolCount} tools, ` +
 			`activateTools=${toolSummary.activateToolCount}${formatActivateToolNames(
 				toolSummary.activateToolNames,
@@ -932,10 +936,10 @@ function logRequestDump(
 	requestJsonLength: number,
 ): void {
 	const systemPromptSummary = summarizeDeepSeekSystemPrompt(request.messages);
-	logger.info(
+	logger.debug(
 		`requestDump written: ${formatDumpSegment(options.segment)}` +
-			` request=${paths.request} ` +
-			`input=${paths.input} resolved=${paths.resolved} ` +
+			` request=${formatFileUri(paths.request)} ` +
+			`input=${formatFileUri(paths.input)} resolved=${formatFileUri(paths.resolved)} ` +
 			`(${request.messages.length} msgs, ${request.tools?.length ?? 0} tools, ` +
 			`~${(requestJsonLength / 1024).toFixed(0)} KB) ` +
 			formatHostSettingsSummary(summarizeHostSettings()) +
